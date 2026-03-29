@@ -97,15 +97,27 @@ struct PanelContentView: View {
                     )
 
                 ZStack {
-                    Button(action: { sessionStore.createQuickSession() }) {
+                    Menu {
+                        ForEach(ProviderRegistry.shared.availableNames, id: \.self) { name in
+                            Button(action: {
+                                if let provider = ProviderRegistry.shared.createProvider(named: name) {
+                                    sessionStore.createSessionWithProvider(provider)
+                                }
+                            }) {
+                                let provider = ProviderRegistry.shared.createProvider(named: name)
+                                Label(name, systemImage: provider?.iconName ?? "terminal")
+                            }
+                        }
+                    } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 12, weight: .medium))
                             .frame(width: 28, height: 28)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
                     .foregroundColor(.white.opacity(foregroundOpacity))
-                    .help("New session")
+                    .help("New session — choose AI provider")
                 }
                 .padding(.leading, -4)
                 .padding(.trailing, -10)

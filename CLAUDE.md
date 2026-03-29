@@ -1,45 +1,50 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with code in this repository.
 
 ## Build
 
-Open `Notchy.xcodeproj` in Xcode and build (Cmd+B). Or from the command line:
-
 ```bash
-xcodebuild -project Notchy.xcodeproj -scheme Notchy -configuration Debug build
+xcodebuild -project Notcha.xcodeproj -scheme Notcha -configuration Debug build
 ```
 
-There are no tests or linting configured yet.
+Or open `Notcha.xcodeproj` in Xcode and build (Cmd+B).
 
 ## Overview
 
-Notchy is a macOS menu bar app that provides a floating terminal panel anchored to the MacBook notch, with automatic Xcode project detection. When the user hovers over the notch or clicks the menu bar icon, a floating panel appears with embedded terminal sessions (via SwiftTerm) that auto-`cd` into detected Xcode project directories and launch `claude`.
+Notcha is a macOS menu bar app that provides a floating terminal panel anchored to the MacBook notch, with support for **multiple AI backends** (Claude Code, Ollama, LM Studio). Forked from [adamlyttleapps/notchy](https://github.com/adamlyttleapps/notchy).
 
 ## Architecture
 
-**App lifecycle**: `NotchyApp` uses `@NSApplicationDelegateAdaptor` to delegate to `AppDelegate`, which owns the `NSStatusItem` (menu bar icon), the `TerminalPanel`, and the `NotchWindow`. The SwiftUI `App` body is an empty `Settings` scene — all UI lives in the panel and notch window.
+### AI Provider System
 
-**Notch integration**: `NotchWindow` is an always-visible `NSPanel` positioned over the MacBook notch. It detects notch dimensions via `NSScreen.auxiliaryTopLeftArea`/`auxiliaryTopRightArea`, tracks mouse hover to trigger the main panel, and expands with a bounce animation (via `CVDisplayLinkWrapper`) when any session is working. `NotchPillContent` (SwiftUI) renders status icons (spinner, checkmark, warning) inside the pill. `NotchDisplayState` computes a priority-based aggregate status across all sessions.
+The core abstraction is the `AIProvider` protocol (`AIProvider.swift`):
+- Each provider defines its launch command, configurable flags, and status detection logic
+- `ProviderRegistry` manages available providers and creates instances
+- Providers: `ClaudeProvider`, `OllamaProvider`, `LMStudioProvider`
 
-**Session management**: `SessionStore` (singleton, `@Observable`) holds the list of `TerminalSession` values and the active selection. It coordinates with `XcodeDetector` to discover open Xcode projects via AppleScript (with a CGWindow title fallback). Sessions use lazy terminal startup — `hasStarted` is false until the user actually selects a tab. The store also manages sleep prevention (`IOPMAssertion`) while Claude is working, and polls for Xcode projects every 5 seconds when pinned.
+### Key Components
 
-**Terminal status detection**: `ClickThroughTerminalView` (subclass of `LocalProcessTerminalView`) reads the terminal buffer on every `dataReceived` (debounced 150ms) and classifies the output into `TerminalStatus` states: `.working` (spinner chars + token counter), `.waitingForInput` (user prompt `❯`), `.interrupted`, `.idle`. The `idle → taskCompleted` transition uses a 3-second delay to avoid false positives from brief working→idle flickers.
+- **NotchWindow** — Invisible NSPanel over the MacBook notch, hover detection, bounce animation
+- **TerminalPanel** — Floating NSPanel with embedded terminal sessions
+- **SessionStore** — Observable singleton managing sessions, Xcode detection, persistence
+- **TerminalManager** — Terminal process lifecycle, delegates status detection to provider
+- **SessionTabBar** — Tab UI with provider icons, right-click for provider settings
+- **ProviderSettingsView** — SwiftUI sheet for configuring provider flags per session
 
-**Terminal embedding**: `TerminalManager` (singleton) owns a `[UUID: LocalProcessTerminalView]` dictionary. Terminals are created on demand, spawning the user's login shell, then sending `cd <project-dir> && clear && claude`. `TerminalSessionView` is an `NSViewRepresentable` that attaches/detaches the terminal view to a container based on the active session ID.
+### Session Flow
 
-**Panel**: `TerminalPanel` is an `NSPanel` (borderless, floating, non-activating) that shows/hides below the notch or status item. It hides on resign-key unless pinned. Supports Cmd+S for checkpoints. `PanelContentView` composes the tab bar and terminal area.
-
-**Tab bar**: `SessionTabBar` renders tabs with a green/gray dot indicating whether the Xcode project is still open. Tabs support rename (via context menu) and close.
-
-**Checkpoints**: `CheckpointManager` creates git snapshots using custom refs (`refs/Notchy-snapshots/<project>/<timestamp>`). It uses a temporary `GIT_INDEX_FILE` to avoid disturbing the user's staging area. Checkpoints can be created (Cmd+S or menu), listed, and restored.
-
-**Hover behavior**: `AppDelegate` manages a dual interaction model — notch hover opens the panel with mouse-tracking that auto-hides when the cursor leaves, while status item click opens normally with resign-key hiding. The backtick key (keyCode 50) is a global hotkey to toggle the panel.
+1. User clicks "+" menu → selects AI provider
+2. `SessionStore.createSessionWithProvider()` creates a `TerminalSession` with the chosen provider
+3. `TerminalManager.terminal(for:)` spawns shell, sends `provider.buildLaunchCommand()`
+4. `ClickThroughTerminalView.evaluateStatus()` calls `provider.detectStatus()` for status updates
 
 ## Dependencies
 
-- **SwiftTerm** (`migueldeicaza/SwiftTerm`) — terminal emulator view (`LocalProcessTerminalView`)
+- **SwiftTerm** (`migueldeicaza/SwiftTerm`) — terminal emulator view
 
-## Entitlements
+## Adding a New Provider
 
-The app requires `com.apple.security.automation.apple-events` for AppleScript communication with Xcode.
+1. Create `Notcha/Providers/MyProvider.swift` conforming to `AIProvider`
+2. Add factory to `ProviderRegistry.factories`
+3. Build and test

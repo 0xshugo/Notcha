@@ -55,14 +55,14 @@ class TerminalPanel: NSPanel {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleHidePanel),
-            name: .NotchyHidePanel,
+            name: .NotchaHidePanel,
             object: nil
         )
 
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleExpandPanel),
-            name: .NotchyExpandPanel,
+            name: .NotchaExpandPanel,
             object: nil
         )
     }
@@ -76,7 +76,7 @@ class TerminalPanel: NSPanel {
             setFrameOrigin(NSPoint(x: x, y: y))
         }
         makeKeyAndOrderFront(nil)
-        NotificationCenter.default.post(name: .NotchyNotchStatusChanged, object: nil)
+        NotificationCenter.default.post(name: .NotchaNotchStatusChanged, object: nil)
     }
 
     func showPanelCentered(on screen: NSScreen) {
@@ -87,7 +87,7 @@ class TerminalPanel: NSPanel {
         let y = screenFrame.maxY - panelHeight
         setFrameOrigin(NSPoint(x: x, y: y))
         makeKeyAndOrderFront(nil)
-        NotificationCenter.default.post(name: .NotchyNotchStatusChanged, object: nil)
+        NotificationCenter.default.post(name: .NotchaNotchStatusChanged, object: nil)
     }
 
     func hidePanel() {

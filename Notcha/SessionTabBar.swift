@@ -39,6 +39,7 @@ struct SessionTab: View {
     @State private var renameText = ""
     @State private var latestCheckpoint: Checkpoint?
     @State private var showRestoreConfirmation = false
+    @State private var showProviderSettings = false
 
     private var name: String { session.projectName }
 
@@ -71,6 +72,10 @@ struct SessionTab: View {
 
     var body: some View {
         HStack(spacing: 4) {
+            Image(systemName: session.provider.iconName)
+                .font(.system(size: 9))
+                .foregroundColor(.white.opacity(foregroundOpacity * 0.6))
+
             statusIndicator
 
             ZStack {
@@ -125,6 +130,12 @@ struct SessionTab: View {
 //                SessionStore.shared.restartSession(session.id)
 //            }
 
+            Button("Configure \(session.provider.name)...") {
+                showProviderSettings = true
+            }
+
+            Divider()
+
             Button("Rename Tab") {
                 renameText = name
                 showRenameDialog = true
@@ -168,6 +179,9 @@ struct SessionTab: View {
         }
         .onChange(of: showRestoreConfirmation) {
             SessionStore.shared.isShowingDialog = showRenameDialog || showRestoreConfirmation
+        }
+        .sheet(isPresented: $showProviderSettings) {
+            ProviderSettingsView(sessionId: session.id)
         }
     }
 }

@@ -27,7 +27,7 @@ enum CheckpointError: LocalizedError {
 class CheckpointManager {
     static let shared = CheckpointManager()
 
-    private let refPrefix = "refs/Notchy-snapshots"
+    private let refPrefix = "refs/Notcha-snapshots"
 
     private let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -74,7 +74,7 @@ class CheckpointManager {
         let refName = "\(refPrefix)/\(projectName)/\(timestamp)"
 
         // Use a temporary index file to avoid disturbing the user's staged changes
-        let tempIndex = NSTemporaryDirectory() + "Notchy-index-\(UUID().uuidString)"
+        let tempIndex = NSTemporaryDirectory() + "Notcha-index-\(UUID().uuidString)"
         defer { try? FileManager.default.removeItem(atPath: tempIndex) }
 
         let env = ["GIT_INDEX_FILE": tempIndex]
@@ -87,7 +87,7 @@ class CheckpointManager {
         guard !tree.isEmpty else { throw CheckpointError.gitFailed("write-tree produced no output") }
 
         // Create a detached commit (no parent) holding the tree
-        let commit = try git(["commit-tree", tree, "-m", "Notchy checkpoint \(timestamp)"], in: projectDirectory)
+        let commit = try git(["commit-tree", tree, "-m", "Notcha checkpoint \(timestamp)"], in: projectDirectory)
         guard !commit.isEmpty else { throw CheckpointError.gitFailed("commit-tree produced no output") }
 
         // Store the commit under a custom ref

@@ -1,18 +1,5 @@
 import Foundation
 
-enum TerminalStatus: Equatable {
-    /// Default — no special activity detected
-    case idle
-    /// Claude is working (status line matches token counter pattern)
-    case working
-    /// Claude is waiting for user input ("Esc to cancel")
-    case waitingForInput
-    /// Claude was interrupted by the user (Esc pressed)
-    case interrupted
-    /// Claude finished a task (confirmed via idle timer line after working)
-    case taskCompleted
-}
-
 struct TerminalSession: Identifiable {
     let id: UUID
     var projectName: String
@@ -26,8 +13,12 @@ struct TerminalSession: Identifiable {
     let createdAt: Date
     /// When the session most recently entered the .working state
     var workingStartedAt: Date?
+    /// The AI provider for this session
+    var provider: AIProvider
+    /// Provider name for persistence
+    var providerName: String
 
-    init(projectName: String, projectPath: String? = nil, workingDirectory: String? = nil, started: Bool = false) {
+    init(projectName: String, projectPath: String? = nil, workingDirectory: String? = nil, started: Bool = false, provider: AIProvider? = nil) {
         self.id = UUID()
         self.projectName = projectName
         self.projectPath = projectPath
@@ -35,8 +26,10 @@ struct TerminalSession: Identifiable {
         self.hasStarted = started
         self.terminalStatus = .idle
         self.generation = 0
-        self.hasBeenSelected = started // if started immediately (e.g. "+" button), mark as selected
+        self.hasBeenSelected = started
         self.createdAt = Date()
+        self.provider = provider ?? ProviderRegistry.shared.createDefault()
+        self.providerName = self.provider.name
     }
 
     /// Restore a session from persisted data
@@ -50,6 +43,8 @@ struct TerminalSession: Identifiable {
         self.generation = 0
         self.hasBeenSelected = false
         self.createdAt = Date()
+        self.provider = ProviderRegistry.shared.createProvider(named: persisted.providerName ?? "Claude Code") ?? ProviderRegistry.shared.createDefault()
+        self.providerName = self.provider.name
     }
 }
 
@@ -59,4 +54,5 @@ struct PersistedSession: Codable {
     let projectName: String
     let projectPath: String?
     let workingDirectory: String
+    let providerName: String?
 }

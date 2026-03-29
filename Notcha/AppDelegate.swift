@@ -38,7 +38,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(named: "menuIcon") //NSImage(systemSymbolName: "terminal", accessibilityDescription: "Notchy")
+            button.image = NSImage(named: "menuIcon") //NSImage(systemSymbolName: "terminal", accessibilityDescription: "Notcha")
             button.image?.isTemplate = true  // lets macOS handle light/dark mode
             button.target = self
             button.action = #selector(statusItemClicked(_:))
@@ -219,12 +219,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(.separator())
         }
 
-        let newItem = NSMenuItem(
-            title: "New Session",
-            action: #selector(createNewSession),
-            keyEquivalent: "n"
-        )
-        newItem.target = self
+        let newItem = NSMenuItem(title: "New Session", action: nil, keyEquivalent: "")
+        let providerMenu = NSMenu()
+        for name in ProviderRegistry.shared.availableNames {
+            let item = NSMenuItem(
+                title: name,
+                action: #selector(createSessionWithProvider(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = name
+            providerMenu.addItem(item)
+        }
+        newItem.submenu = providerMenu
         menu.addItem(newItem)
         menu.addItem(.separator())
 
@@ -285,7 +292,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 //        menu.addItem(.separator())
 
         let quitItem = NSMenuItem(
-            title: "Quit Notchy",
+            title: "Quit Notcha",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
@@ -324,6 +331,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             notchWindow?.orderOut(nil)
             notchWindow = nil
         }
+    }
+
+    @objc private func createSessionWithProvider(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String,
+              let provider = ProviderRegistry.shared.createProvider(named: name) else { return }
+        sessionStore.createSessionWithProvider(provider)
+        showPanelBelowStatusItem()
     }
 
     @objc private func createNewSession() {

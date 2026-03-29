@@ -3,6 +3,7 @@ import SwiftTerm
 
 class ClickThroughTerminalView: LocalProcessTerminalView {
     var sessionId: UUID?
+    var provider: AIProvider?
     private var keyMonitor: Any?
     private var statusDebounceTimer: Timer?
 
@@ -26,18 +27,16 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         }
     }
 
-    /// Intercept arrow key events locally and send standard VT100/xterm sequences
-    /// to avoid kitty keyboard protocol (CSI u) encoding issues.
     private func installArrowKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self, self.window?.firstResponder === self else { return event }
 
             let arrowCode: String?
             switch event.keyCode {
-            case 126: arrowCode = "A" // Up
-            case 125: arrowCode = "B" // Down
-            case 124: arrowCode = "C" // Right
-            case 123: arrowCode = "D" // Left
+            case 126: arrowCode = "A"
+            case 125: arrowCode = "B"
+            case 124: arrowCode = "C"
+            case 123: arrowCode = "D"
             default: arrowCode = nil
             }
 
@@ -53,7 +52,7 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
                 if mods.contains(.control) { modifier += 4 }
                 self.send(txt: "\u{1b}[1;\(modifier)\(code)")
             }
-            return nil // consume the event
+            return nil
         }
     }
 
@@ -70,7 +69,6 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         return true
     }
 
-    /// Returns all visible lines from the terminal buffer.
     private func extractAllLines() -> [String]? {
         let terminal = getTerminal()
         guard terminal.rows >= 20 else { return nil }
@@ -86,19 +84,14 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         return lineTexts
     }
 
-    /// Returns the last 20 non-blank lines from the given lines, joined by newlines.
     private func relevantText(from lines: [String]) -> String {
         let nonBlankLines = lines.filter { !$0.allSatisfy({ $0 == " " }) }
         return nonBlankLines.suffix(20).joined(separator: "\n")
     }
 
-    /// Returns the last 20 non-blank lines of terminal output above the prompt separator.
     func extractVisibleText() -> String? {
         guard var lineTexts = extractAllLines() else { return nil }
 
-        // Find the last horizontal rule separator (────...) which divides
-        // Claude's output from the user's current prompt input area.
-        // Only consider text above it so we don't capture the in-progress prompt.
         let separator = "────────"
         if let lastSeparatorIndex = lineTexts.lastIndex(where: { $0.contains(separator) }) {
             lineTexts = Array(lineTexts.prefix(lastSeparatorIndex))
@@ -107,7 +100,6 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
         return relevantText(from: lineTexts)
     }
 
-    /// Returns the last 20 non-blank lines of the full terminal output (including prompt area).
     func extractFullVisibleText() -> String? {
         guard let lineTexts = extractAllLines() else { return nil }
         return relevantText(from: lineTexts)
@@ -118,9 +110,6 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
 
         guard let id = sessionId else { return }
 
-        // Debounce status checks — the buffer can be mid-render when
-        // dataReceived fires, causing transient misreads that flicker
-        // between .working and .idle.
         statusDebounceTimer?.invalidate()
         statusDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: false) { [weak self] _ in
             guard let self else { return }
@@ -129,62 +118,16 @@ class ClickThroughTerminalView: LocalProcessTerminalView {
     }
 
     private func evaluateStatus(for id: UUID) {
-        guard let visibleText = extractVisibleText() else { return }
+        guard let visibleText = extractVisibleText(),
+              let provider = self.provider else { return }
         let fullText = extractFullVisibleText() ?? visibleText
 
-        let newStatus: TerminalStatus
-
-        if Self.hasTokenCounterLine(visibleText) || fullText.contains("esc to interrupt") {
-            newStatus = .working
-        }
-        else if fullText.contains("Esc to cancel") || Self.hasUserPrompt(fullText) {
-            newStatus = .waitingForInput
-        } else if visibleText.contains("Interrupted") {
-            newStatus = .interrupted
-        } else {
-            newStatus = .idle
-        }
+        let newStatus = provider.detectStatus(visibleText: visibleText, fullText: fullText)
 
         if !SessionStore.shared.sessions.contains(where: {$0.id == id && $0.terminalStatus == newStatus}) {
             DispatchQueue.main.async {
                 SessionStore.shared.updateTerminalStatus(id, status: newStatus)
             }
-        }
-    }
-
-    /// Checks whether the text contains a Claude spinner character (visible during working state)
-    private static let spinnerCharacters: Set<Character> = ["·", "✢", "✳", "✶", "✻", "✽"]
-
-    /// Checks for a line like "Idle for 30s" — must contain " for " and end with "s",
-    /// but must NOT contain parentheses (which indicate thinking duration, not true idle).
-    private static func hasIdleForLine(_ text: String) -> Bool {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        return lines.contains { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.contains(" for ") else { return false }
-            guard trimmed.hasSuffix("s") else { return false }
-            guard !trimmed.contains("(") && !trimmed.contains(")") else { return false }
-            return true
-        }
-    }
-
-    /// Checks for the user prompt indicator: ❯ followed by a digit (1-9)
-    private static func hasUserPrompt(_ text: String) -> Bool {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        return lines.contains { line in
-            let trimmed = line.drop(while: { $0 == " " })
-            return trimmed.hasPrefix("❯") &&
-                trimmed.dropFirst().first == " " &&
-                trimmed.dropFirst(2).first?.isNumber == true
-        }
-    }
-
-    private static func hasTokenCounterLine(_ text: String) -> Bool {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        return lines.contains { line in
-            guard let first = line.first, spinnerCharacters.contains(first) else { return false }
-            guard line.dropFirst().first == " " else { return false }
-            return line.contains("…")
         }
     }
 }
@@ -194,16 +137,16 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
 
     private var terminals: [UUID: LocalProcessTerminalView] = [:]
 
-    func terminal(for sessionId: UUID, workingDirectory: String, launchClaude: Bool = true) -> LocalProcessTerminalView {
-        if let existing = terminals[sessionId] {
+    func terminal(for session: TerminalSession) -> LocalProcessTerminalView {
+        if let existing = terminals[session.id] {
             return existing
         }
 
         let terminal = ClickThroughTerminalView(frame: NSRect(x: 0, y: 0, width: 720, height: 460))
-        terminal.sessionId = sessionId
+        terminal.sessionId = session.id
+        terminal.provider = session.provider
         terminal.processDelegate = self
 
-        // Match macOS Terminal default font size
         terminal.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
         terminal.nativeBackgroundColor = NSColor(white: 0.1, alpha: 1.0)
         terminal.nativeForegroundColor = NSColor(white: 0.9, alpha: 1.0)
@@ -218,17 +161,23 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
             execName: "-" + (shell as NSString).lastPathComponent
         )
 
-        // cd to working directory, launch claude only if CLAUDE.md exists
-        let escapedDir = shellEscape(workingDirectory)
-        let hasClaude = launchClaude && FileManager.default.fileExists(atPath: (workingDirectory as NSString).appendingPathComponent("CLAUDE.md"))
-        if hasClaude {
-            terminal.send(txt: "cd \(escapedDir) && clear && claude\r")
-        } else {
-            terminal.send(txt: "cd \(escapedDir) && clear\r")
-        }
+        let launchCmd = session.provider.buildLaunchCommand(workingDirectory: session.workingDirectory)
+        terminal.send(txt: launchCmd + "\r")
 
-        terminals[sessionId] = terminal
+        terminals[session.id] = terminal
         return terminal
+    }
+
+    // Legacy compatibility
+    func terminal(for sessionId: UUID, workingDirectory: String, launchClaude: Bool = true) -> LocalProcessTerminalView {
+        if let existing = terminals[sessionId] {
+            return existing
+        }
+        if let session = SessionStore.shared.sessions.first(where: { $0.id == sessionId }) {
+            return terminal(for: session)
+        }
+        let fallbackSession = TerminalSession(projectName: "Terminal", workingDirectory: workingDirectory, started: true)
+        return terminal(for: fallbackSession)
     }
 
     // MARK: - LocalProcessTerminalViewDelegate
@@ -248,7 +197,6 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
 
     func processTerminated(source: TerminalView, exitCode: Int32?) {}
 
-    /// Returns the visible text from a terminal's buffer
     func visibleText(for sessionId: UUID) -> String? {
         guard let terminal = terminals[sessionId] as? ClickThroughTerminalView else { return nil }
         return terminal.extractVisibleText()
@@ -263,9 +211,5 @@ class TerminalManager: NSObject, LocalProcessTerminalViewDelegate {
         env["TERM"] = "xterm-256color"
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         return env.map { "\($0.key)=\($0.value)" }
-    }
-
-    private func shellEscape(_ path: String) -> String {
-        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }

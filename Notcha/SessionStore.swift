@@ -3,9 +3,9 @@ import AVFoundation
 import SwiftUI
 
 extension Notification.Name {
-    static let NotchyHidePanel = Notification.Name("NotchyHidePanel")
-    static let NotchyExpandPanel = Notification.Name("NotchyExpandPanel")
-    static let NotchyNotchStatusChanged = Notification.Name("NotchyNotchStatusChanged")
+    static let NotchaHidePanel = Notification.Name("NotchaHidePanel")
+    static let NotchaExpandPanel = Notification.Name("NotchaExpandPanel")
+    static let NotchaNotchStatusChanged = Notification.Name("NotchaNotchStatusChanged")
 
 }
 
@@ -102,7 +102,7 @@ class SessionStore {
     }
 
     private func persistSessions() {
-        let persisted = sessions.map { PersistedSession(id: $0.id, projectName: $0.projectName, projectPath: $0.projectPath, workingDirectory: $0.workingDirectory) }
+        let persisted = sessions.map { PersistedSession(id: $0.id, projectName: $0.projectName, projectPath: $0.projectPath, workingDirectory: $0.workingDirectory, providerName: $0.providerName) }
         if let data = try? JSONEncoder().encode(persisted) {
             UserDefaults.standard.set(data, forKey: Self.sessionsKey)
         }
@@ -232,7 +232,7 @@ class SessionStore {
             // Expand terminal if collapsed when user taps a tab
             if !isTerminalExpanded {
                 isTerminalExpanded = true
-                NotificationCenter.default.post(name: .NotchyExpandPanel, object: nil)
+                NotificationCenter.default.post(name: .NotchaExpandPanel, object: nil)
             }
         }
         persistSessions()
@@ -248,9 +248,15 @@ class SessionStore {
 
     /// "+" button: creates a plain terminal session with no project association
     func createQuickSession() {
+        createSessionWithProvider(ProviderRegistry.shared.createDefault())
+    }
+
+    /// Create a session with a specific AI provider
+    func createSessionWithProvider(_ provider: AIProvider) {
         let session = TerminalSession(
-            projectName: "Terminal",
-            started: true
+            projectName: provider.name,
+            started: true,
+            provider: provider
         )
         sessions.append(session)
         activeSessionId = session.id
@@ -277,7 +283,7 @@ class SessionStore {
                 playSound(named: "waitingForInput")
                 if isPinned && !isTerminalExpanded && id == activeSessionId {
                     isTerminalExpanded = true
-                    NotificationCenter.default.post(name: .NotchyExpandPanel, object: nil)
+                    NotificationCenter.default.post(name: .NotchaExpandPanel, object: nil)
                 }
             }
             else if status == .taskCompleted && previous != .taskCompleted {
@@ -301,7 +307,7 @@ class SessionStore {
                     guard let idx2 = self.sessions.firstIndex(where: { $0.id == id }),
                           self.sessions[idx2].terminalStatus == .taskCompleted else { return }
                     self.sessions[idx2].terminalStatus = .idle
-                    NotificationCenter.default.post(name: .NotchyNotchStatusChanged, object: nil)
+                    NotificationCenter.default.post(name: .NotchaNotchStatusChanged, object: nil)
                 }
             }
         }

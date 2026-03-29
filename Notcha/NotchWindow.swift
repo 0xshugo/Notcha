@@ -124,7 +124,7 @@ class NotchWindow: NSPanel {
 
     private func observeStatusChanges() {
         statusObserver = NotificationCenter.default.addObserver(
-            forName: .NotchyNotchStatusChanged,
+            forName: .NotchaNotchStatusChanged,
             object: nil,
             queue: .main
         ) { [weak self] _ in
@@ -600,7 +600,7 @@ struct NotchPillContent: View {
         .background(Color.clear)
         .offset(y: isHovering ? -3 : -2)
         .onChange(of: displayState) {
-            NotificationCenter.default.post(name: .NotchyNotchStatusChanged, object: nil)
+            NotificationCenter.default.post(name: .NotchaNotchStatusChanged, object: nil)
         }
     }
 }
