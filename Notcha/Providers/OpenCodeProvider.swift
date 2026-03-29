@@ -15,40 +15,36 @@ class OpenCodeProvider: AIProvider {
 
     func buildLaunchCommand(workingDirectory: String) -> String {
         let escaped = "'" + workingDirectory.replacingOccurrences(of: "'", with: "'\\''") + "'"
-        // OpenCode auto-detects project from cwd
         return "cd \(escaped) && clear && opencode"
     }
 
+    /// Tracks when we last saw data change — used for activity-based detection
+    private var lastContentHash: Int = 0
+    private var unchangedCount: Int = 0
+
     func detectStatus(visibleText: String, fullText: String) -> TerminalStatus {
-        // OpenCode uses a rich TUI — detect based on output patterns
-        // When generating: streaming text output without prompt
-        // When waiting: shows input prompt area at bottom
+        // OpenCode is a full-screen TUI app. Text-based keyword detection
+        // doesn't work reliably because the TUI chrome always contains
+        // words like "Reading", "Message", etc.
+        //
+        // Strategy: detect based on content change frequency.
+        // If the buffer is changing rapidly → working
+        // If the buffer is stable → waitingForInput (TUI is idle, waiting for user)
 
-        // OpenCode TUI shows tool calls and streaming responses
-        // Look for common patterns in the rendered output
-        if fullText.contains("Running") || fullText.contains("Editing") ||
-           fullText.contains("Reading") || fullText.contains("Searching") ||
-           fullText.contains("Writing") {
+        let currentHash = fullText.hashValue
+
+        if currentHash != lastContentHash {
+            lastContentHash = currentHash
+            unchangedCount = 0
+            return .working
+        } else {
+            unchangedCount += 1
+            // After ~3 stable checks (150ms debounce × 3 = ~450ms stable),
+            // consider it idle/waiting for input
+            if unchangedCount >= 3 {
+                return .waitingForInput
+            }
             return .working
         }
-
-        // OpenCode shows a prompt input area — if we see it, it's waiting
-        // The TUI typically has a message input field at the bottom
-        let lines = fullText.split(separator: "\n", omittingEmptySubsequences: false)
-        let lastNonBlank = lines.last(where: { !$0.allSatisfy({ $0 == " " }) }) ?? ""
-        let trimmed = lastNonBlank.trimmingCharacters(in: .whitespaces)
-
-        // OpenCode's TUI input prompt patterns
-        if trimmed.contains("Message") || trimmed.contains(">") && trimmed.count < 20 {
-            return .waitingForInput
-        }
-
-        // If there's substantial recent output, likely working
-        let recentLines = lines.suffix(5).filter { !$0.allSatisfy({ $0 == " " }) }
-        if recentLines.count >= 3 {
-            return .working
-        }
-
-        return .idle
     }
 }
