@@ -18,33 +18,13 @@ class OpenCodeProvider: AIProvider {
         return "cd \(escaped) && clear && opencode"
     }
 
-    /// Tracks when we last saw data change — used for activity-based detection
-    private var lastContentHash: Int = 0
-    private var unchangedCount: Int = 0
-
     func detectStatus(visibleText: String, fullText: String) -> TerminalStatus {
-        // OpenCode is a full-screen TUI app. Text-based keyword detection
-        // doesn't work reliably because the TUI chrome always contains
-        // words like "Reading", "Message", etc.
+        // OpenCode is a full-screen TUI app that continuously redraws
+        // (cursor blink, clock, etc.), making terminal buffer analysis
+        // unreliable for status detection.
         //
-        // Strategy: detect based on content change frequency.
-        // If the buffer is changing rapidly → working
-        // If the buffer is stable → waitingForInput (TUI is idle, waiting for user)
-
-        let currentHash = fullText.hashValue
-
-        if currentHash != lastContentHash {
-            lastContentHash = currentHash
-            unchangedCount = 0
-            return .working
-        } else {
-            unchangedCount += 1
-            // After ~3 stable checks (150ms debounce × 3 = ~450ms stable),
-            // consider it idle/waiting for input
-            if unchangedCount >= 3 {
-                return .waitingForInput
-            }
-            return .working
-        }
+        // OpenCode has its own built-in status UI, so we stay idle
+        // and let OpenCode handle status display internally.
+        return .idle
     }
 }
