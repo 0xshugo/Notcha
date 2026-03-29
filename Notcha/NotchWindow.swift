@@ -548,23 +548,44 @@ struct NotchPillContent: View {
     var isHovering: Bool = false
     private var displayState: NotchDisplayState { .current }
 
+    private var activeSession: TerminalSession? {
+        SessionStore.shared.activeSession
+    }
+
     var body: some View {
         ZStack {
-            HStack {
+            HStack(spacing: 6) {
+                if isHovering && displayState == .idle {
+                    // Hover menu: show provider icon + session name
+                    if let session = activeSession {
+                        Image(systemName: session.provider.iconName)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.8))
+                            .transition(.scale.combined(with: .opacity))
 
-                if displayState != .idle {
+                        Text(session.projectName)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                            .lineLimit(1)
+                            .transition(.opacity)
+                    } else {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.white.opacity(0.6))
+                            .transition(.scale.combined(with: .opacity))
 
-                    Rectangle()
-                        .foregroundColor(.clear)
-                        .frame(width: 18, height: 18)
-                        .overlay(alignment: .leading) {
-                            BotFaceView() //state: displayState
-                                .frame(width: 20, height: 15)
-                                .mask(RoundedRectangle(cornerRadius: 5))
-                        }
-//                        .offset(x: 2)
-//                        .padding(.leading, -2)
-
+                        Text("Notcha")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                            .transition(.opacity)
+                    }
+                } else if displayState != .idle {
+                    // Active state: show status indicators
+                    if let session = activeSession {
+                        Image(systemName: session.provider.iconName)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
 
                     Spacer()
 
@@ -589,12 +610,8 @@ struct NotchPillContent: View {
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: displayState)
+            .animation(.easeInOut(duration: 0.2), value: isHovering)
             .padding(.horizontal, 12 + (isHovering ? NotchPillView.earRadius : 0))
-
-            // Debug: show current displayState
-//            Text("\(String(describing: displayState))")
-//                .font(.system(size: 10, weight: .medium, design: .monospaced))
-//                .foregroundColor(.white)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.clear)

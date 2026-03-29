@@ -6,7 +6,10 @@ extension Notification.Name {
     static let NotchaHidePanel = Notification.Name("NotchaHidePanel")
     static let NotchaExpandPanel = Notification.Name("NotchaExpandPanel")
     static let NotchaNotchStatusChanged = Notification.Name("NotchaNotchStatusChanged")
-
+    /// Fired when AI starts working — panel should collapse into the notch
+    static let NotchaAbsorbIntoNotch = Notification.Name("NotchaAbsorbIntoNotch")
+    /// Fired when AI needs attention — panel should re-emerge from the notch
+    static let NotchaEmergeFromNotch = Notification.Name("NotchaEmergeFromNotch")
 }
 
 @Observable
@@ -278,9 +281,15 @@ class SessionStore {
 
             if status == .working && previous != .working {
                 sessions[index].workingStartedAt = Date()
+                // Absorb panel into notch when AI starts working
+                if id == activeSessionId && isTerminalExpanded {
+                    NotificationCenter.default.post(name: .NotchaAbsorbIntoNotch, object: nil)
+                }
             }
             if status == .waitingForInput && previous != .waitingForInput {
                 playSound(named: "waitingForInput")
+                // Emerge from notch when AI needs input
+                NotificationCenter.default.post(name: .NotchaEmergeFromNotch, object: nil)
                 if isPinned && !isTerminalExpanded && id == activeSessionId {
                     isTerminalExpanded = true
                     NotificationCenter.default.post(name: .NotchaExpandPanel, object: nil)
@@ -288,6 +297,8 @@ class SessionStore {
             }
             else if status == .taskCompleted && previous != .taskCompleted {
                 playSound(named: "taskCompleted")
+                // Emerge from notch when task is done
+                NotificationCenter.default.post(name: .NotchaEmergeFromNotch, object: nil)
             }
             else if status == .idle && previous == .working {
                 // Delay 3s before treating as "task completed" — Claude sometimes

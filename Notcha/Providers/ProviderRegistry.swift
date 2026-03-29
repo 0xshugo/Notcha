@@ -7,6 +7,7 @@ class ProviderRegistry {
     /// All registered provider factories (creates fresh instance each time)
     private let factories: [() -> AIProvider] = [
         { ClaudeProvider() },
+        { OpenCodeProvider() },
         { OllamaProvider() },
         { LMStudioProvider() },
     ]

@@ -65,7 +65,26 @@ class TerminalPanel: NSPanel {
             name: .NotchaExpandPanel,
             object: nil
         )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAbsorbIntoNotch),
+            name: .NotchaAbsorbIntoNotch,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleEmergeFromNotch),
+            name: .NotchaEmergeFromNotch,
+            object: nil
+        )
     }
+
+    /// Whether the panel is currently absorbed into the notch
+    private var isAbsorbed = false
+    /// Frame to restore when emerging
+    private var preAbsorbFrame: NSRect = .zero
 
     func showPanel(below rect: NSRect) {
         if let screen = NSScreen.main {
@@ -124,13 +143,77 @@ class TerminalPanel: NSPanel {
         handleToggleExpand()
     }
 
+    @objc private func handleAbsorbIntoNotch() {
+        guard isVisible, !isAbsorbed, sessionStore.isPinned else { return }
+        isAbsorbed = true
+        preAbsorbFrame = frame
+
+        guard let screen = NSScreen.builtIn else { return }
+        let screenFrame = screen.frame
+
+        // Target: a small rect centered at the notch position
+        let notchWidth: CGFloat = 200
+        let targetFrame = NSRect(
+            x: screenFrame.midX - notchWidth / 2,
+            y: screenFrame.maxY - 44,
+            width: notchWidth,
+            height: 44
+        )
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.4
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            self.animator().setFrame(targetFrame, display: true)
+            self.animator().alphaValue = 0.0
+        } completionHandler: {
+            if self.isAbsorbed {
+                self.orderOut(nil)
+            }
+        }
+    }
+
+    @objc private func handleEmergeFromNotch() {
+        guard isAbsorbed else { return }
+        isAbsorbed = false
+
+        guard let screen = NSScreen.builtIn else { return }
+        let screenFrame = screen.frame
+
+        // Start from notch position
+        let notchWidth: CGFloat = 200
+        let startFrame = NSRect(
+            x: screenFrame.midX - notchWidth / 2,
+            y: screenFrame.maxY - 44,
+            width: notchWidth,
+            height: 44
+        )
+
+        setFrame(startFrame, display: false)
+        alphaValue = 0.0
+        makeKeyAndOrderFront(nil)
+
+        let targetFrame = preAbsorbFrame.isEmpty ? NSRect(
+            x: screenFrame.midX - 360,
+            y: screenFrame.maxY - 500,
+            width: 720,
+            height: 500
+        ) : preAbsorbFrame
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.4
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            self.animator().setFrame(targetFrame, display: true)
+            self.animator().alphaValue = 1.0
+        }
+    }
+
     @objc private func windowDidBecomeKey(_ notification: Notification) {
         sessionStore.panelDidBecomeKey()
         updateOpacity()
     }
 
     @objc private func windowDidResignKey(_ notification: Notification) {
-        if !sessionStore.isPinned && !sessionStore.isShowingDialog && attachedSheet == nil && childWindows?.isEmpty ?? true {
+        if !sessionStore.isPinned && !sessionStore.isShowingDialog && !isAbsorbed && attachedSheet == nil && childWindows?.isEmpty ?? true {
             hidePanel()
         }
         updateOpacity()
